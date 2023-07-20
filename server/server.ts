@@ -1,34 +1,39 @@
-import path from "path";
-import { fileURLToPath } from "url";
+import path from 'path'
+import { fileURLToPath } from 'url'
 
-import { UserId, RoomId, Application, startServer, verifyJwt } from "@hathora/server-sdk";
-import dotenv from "dotenv";
-import { Box, Body, System } from "detect-collisions";
-import { Direction, GameState, InitialConfig, LobbyState } from "../common/types";
-import { ClientMessage, ClientMessageType, ServerMessage, ServerMessageType } from "../common/messages";
-import map from "../common/map.json" assert { type: "json" };
+import { UserId, RoomId, Application, startServer, verifyJwt } from '@hathora/server-sdk'
+import dotenv from 'dotenv'
+import { Box, Body, System } from 'detect-collisions'
+import { Direction, GameState, InitialConfig, LobbyState } from '../common/types'
+import {
+  ClientMessage,
+  ClientMessageType,
+  ServerMessage,
+  ServerMessageType,
+} from '../common/messages'
+import map from '../common/map.json' assert { type: 'json' }
 
-import { LobbyV2Api, RoomV1Api } from "@hathora/hathora-cloud-sdk";
+import { LobbyV2Api, RoomV1Api } from '@hathora/hathora-cloud-sdk'
 
-const lobbyClient = new LobbyV2Api();
-const roomClient = new RoomV1Api();
+const lobbyClient = new LobbyV2Api()
+const roomClient = new RoomV1Api()
 
 // The millisecond tick rate
-const TICK_INTERVAL_MS = 50;
+const TICK_INTERVAL_MS = 50
 
 // Player configuration
-const PLAYER_RADIUS = 20; // The player's circular radius, used for collision detection
-const PLAYER_SPEED = 200; // The player's movement speed
-const DASH_DISTANCE = 40; // The player's dash distance
+const PLAYER_RADIUS = 20 // The player's circular radius, used for collision detection
+const PLAYER_SPEED = 200 // The player's movement speed
+const DASH_DISTANCE = 40 // The player's dash distance
 
 // Bullet configuration
-const BULLET_RADIUS = 9; // The bullet's circular radius, used for collision detection
-const BULLET_SPEED = 1000; // The bullet's movement speed when shot
+const BULLET_RADIUS = 9 // The bullet's circular radius, used for collision detection
+const BULLET_SPEED = 1000 // The bullet's movement speed when shot
 
 // Reloading
-const BULLETS_MAX = 3;
-const RELOAD_SPEED = 3000; // in millis
-const DASH_COOLDOWN = 2000; // in millis
+const BULLETS_MAX = 3
+const RELOAD_SPEED = 3000 // in millis
+const DASH_COOLDOWN = 2000 // in millis
 
 // An x, y vector representing the spawn location of the player on the map
 const SPAWN_POSITIONS = [
@@ -80,10 +85,10 @@ const SPAWN_POSITIONS = [
     x: 1000,
     y: 1875,
   },
-];
+]
 
 // The width of the map boundary rectangles
-const BOUNDARY_WIDTH = 200;
+const BOUNDARY_WIDTH = 200
 
 // An enum which represents the type of body for a given object
 enum BodyType {
@@ -91,33 +96,33 @@ enum BodyType {
   Bullet,
   Wall,
 }
-const PLAYER_SPRITES_COUNT = 9;
+const PLAYER_SPRITES_COUNT = 9
 
 // A type to represent a physics body with a type (uses BodyType above)
-type PhysicsBody = Body & { oType: BodyType };
+type PhysicsBody = Body & { oType: BodyType }
 
 // A type which defines the properties of a player used internally on the server (not sent to client)
 type InternalPlayer = {
-  id: UserId;
-  nickname?: string;
-  body: PhysicsBody;
-  direction: Direction;
-  angle: number;
-  isDead: boolean;
-  bullets: number;
-  isReloading: number | undefined;
-  dashCooldown: number | undefined;
-  score: number;
-  sprite: number;
-};
+  id: UserId
+  nickname?: string
+  body: PhysicsBody
+  direction: Direction
+  angle: number
+  isDead: boolean
+  bullets: number
+  isReloading: number | undefined
+  dashCooldown: number | undefined
+  score: number
+  sprite: number
+}
 
 // A type which defines the properties of a bullet used internally on the server (not sent to client)
 type InternalBullet = {
-  id: number;
-  playerId: UserId;
-  body: PhysicsBody;
-  angle: number;
-};
+  id: number
+  playerId: UserId
+  body: PhysicsBody
+  angle: number
+}
 
 // A type which represents the internal state of the server, containing:
 //   - physics: our "physics" engine (detect-collisions library)
@@ -126,51 +131,55 @@ type InternalBullet = {
 //   - winningScore: a number set at creation to determine winner
 //   - isGameEnd: a boolean to track if game has ended
 type InternalState = {
-  physics: System;
-  players: InternalPlayer[];
-  bullets: InternalBullet[];
-  winningScore: number;
-  isGameEnd: boolean;
-  winningPlayerId?: UserId;
-};
+  physics: System
+  players: InternalPlayer[]
+  bullets: InternalBullet[]
+  winningScore: number
+  isGameEnd: boolean
+  winningPlayerId?: UserId
+}
 
 // A map which the server uses to contain all room's InternalState instances
-const rooms: Map<RoomId, InternalState> = new Map();
+const rooms: Map<RoomId, InternalState> = new Map()
 
 // Create an object to represent our Store
 const store: Application = {
+  // @ts-ignore
   verifyToken(token: string): UserId | undefined {
-    const userId = verifyJwt(token, process.env.HATHORA_APP_SECRET!);
+    const userId = verifyJwt(token, process.env.HATHORA_APP_SECRET!)
     if (userId === undefined) {
-      console.error("Failed to verify token", token);
+      console.error('Failed to verify token', token)
     }
-    return userId;
+    return userId
   },
 
   // subscribeUser is called when a new user enters a room, it's an ideal place to do any player-specific initialization steps
   async subscribeUser(roomId: RoomId, userId: string): Promise<void> {
-    console.log("subscribeUser", roomId, userId);
+    console.log('subscribeUser', roomId, userId)
     try {
-      const lobbyInfo = await lobbyClient.getLobbyInfo(process.env.HATHORA_APP_ID!, roomId);
-      const lobbyState = lobbyInfo.state as LobbyState | undefined;
-      const lobbyInitialConfig = lobbyInfo.initialConfig as InitialConfig | undefined;
+      const lobbyInfo = await lobbyClient.getLobbyInfo(process.env.HATHORA_APP_ID!, roomId)
+      const lobbyState = lobbyInfo.state as LobbyState | undefined
+      const lobbyInitialConfig = lobbyInfo.initialConfig as InitialConfig | undefined
 
       if (!rooms.has(roomId)) {
-        rooms.set(roomId, initializeRoom(lobbyInitialConfig?.winningScore ?? 10, lobbyState?.isGameEnd || false));
+        rooms.set(
+          roomId,
+          initializeRoom(lobbyInitialConfig?.winningScore ?? 10, lobbyState?.isGameEnd || false)
+        )
       }
-      const game = rooms.get(roomId)!;
+      const game = rooms.get(roomId)!
 
       if (game.players.length === lobbyInitialConfig?.capacity) {
-        throw new Error("room is full");
+        throw new Error('room is full')
       }
       if (game.isGameEnd) {
-        throw new Error("game has ended");
+        throw new Error('game has ended')
       }
       // Make sure the player hasn't already spawned
-      if (!game.players.some((player) => player.id === userId)) {
+      if (!game.players.some(player => player.id === userId)) {
         // Then create a physics body for the player
-        const spawn = SPAWN_POSITIONS[Math.floor(Math.random() * SPAWN_POSITIONS.length)];
-        const body = game.physics.createCircle(spawn, PLAYER_RADIUS);
+        const spawn = SPAWN_POSITIONS[Math.floor(Math.random() * SPAWN_POSITIONS.length)]
+        const body = game.physics.createCircle(spawn, PLAYER_RADIUS)
         game.players.push({
           id: userId,
           body: Object.assign(body, { oType: BodyType.Player }),
@@ -182,210 +191,217 @@ const store: Application = {
           dashCooldown: undefined,
           score: 0,
           sprite: Math.floor(Math.random() * PLAYER_SPRITES_COUNT),
-        });
-        await updateLobbyState(game, roomId);
+        })
+        await updateLobbyState(game, roomId)
       }
     } catch (err) {
-      console.log("failed to connect to room: ", err);
-      server.closeConnection(roomId, userId, err instanceof Error ? err.message : "failed to connect to room");
+      console.log('failed to connect to room: ', err)
+      server.closeConnection(
+        roomId,
+        userId,
+        err instanceof Error ? err.message : 'failed to connect to room'
+      )
     }
   },
 
   // unsubscribeUser is called when a user disconnects from a room, and is the place where you'd want to do any player-cleanup
   async unsubscribeUser(roomId: RoomId, userId: string): Promise<void> {
-    console.log("unsubscribeUser", roomId, userId);
+    console.log('unsubscribeUser', roomId, userId)
     // Make sure the room exists
     if (!rooms.has(roomId)) {
-      return;
+      return
     }
 
     // Remove the player from the room's state
-    const game = rooms.get(roomId)!;
-    const idx = game.players.findIndex((player) => player.id === userId);
+    const game = rooms.get(roomId)!
+    const idx = game.players.findIndex(player => player.id === userId)
     if (idx >= 0) {
-      game.physics.remove(game.players[idx].body);
-      game.players.splice(idx, 1);
+      game.physics.remove(game.players[idx].body)
+      game.players.splice(idx, 1)
     }
 
     try {
-      await updateLobbyState(game, roomId);
+      await updateLobbyState(game, roomId)
     } catch (err) {
-      console.log("failed to connect to room: ", err);
+      console.log('failed to connect to room: ', err)
     }
   },
 
   // onMessage is an integral part of your game's server. It is responsible for reading messages sent from the clients and handling them accordingly, this is where your game's event-based logic should live
+  // @ts-ignore
   onMessage(roomId: RoomId, userId: string, data: ArrayBuffer): void {
     if (!rooms.has(roomId)) {
-      return;
+      return
     }
 
     // Get the player, or return out of the function if they don't exist
-    const game = rooms.get(roomId)!;
-    const player = game.players.find((player) => player.id === userId);
+    const game = rooms.get(roomId)!
+    const player = game.players.find(player => player.id === userId)
     if (player === undefined) {
-      return;
+      return
     }
 
     // Parse out the data string being sent from the client
-    const message: ClientMessage = JSON.parse(Buffer.from(data).toString("utf8"));
+    const message: ClientMessage = JSON.parse(Buffer.from(data).toString('utf8'))
     // Handle the various message types, specific to this game
 
     if (message.type === ClientMessageType.SetNickname) {
-      player.nickname = message.nickname;
-      updateLobbyState(game, roomId);
+      player.nickname = message.nickname
+      updateLobbyState(game, roomId)
     } else if (message.type === ClientMessageType.SetDirection) {
-      player.direction = message.direction;
+      player.direction = message.direction
     } else if (message.type === ClientMessageType.SetAngle) {
-      player.angle = message.angle;
+      player.angle = message.angle
     } else if (message.type === ClientMessageType.Respawn) {
       if (player.isDead) {
         // Respawn player
-        const spawn = SPAWN_POSITIONS[Math.floor(Math.random() * SPAWN_POSITIONS.length)];
-        const body = game.physics.createCircle(spawn, PLAYER_RADIUS);
-        player.direction = { x: 0, y: 0 };
-        player.angle = 0;
-        player.bullets = BULLETS_MAX;
-        player.body = Object.assign(body, { oType: BodyType.Player });
-        player.isReloading = undefined;
-        player.dashCooldown = undefined;
-        player.isDead = false;
+        const spawn = SPAWN_POSITIONS[Math.floor(Math.random() * SPAWN_POSITIONS.length)]
+        const body = game.physics.createCircle(spawn, PLAYER_RADIUS)
+        player.direction = { x: 0, y: 0 }
+        player.angle = 0
+        player.bullets = BULLETS_MAX
+        player.body = Object.assign(body, { oType: BodyType.Player })
+        player.isReloading = undefined
+        player.dashCooldown = undefined
+        player.isDead = false
       }
     } else if (message.type === ClientMessageType.Dash) {
       if (player.isDead) {
-        return;
+        return
       }
       if (!player.dashCooldown) {
-        player.body.x += DASH_DISTANCE * player.direction.x;
-        player.body.y += DASH_DISTANCE * player.direction.y;
-        player.dashCooldown = Date.now() + DASH_COOLDOWN;
+        player.body.x += DASH_DISTANCE * player.direction.x
+        player.body.y += DASH_DISTANCE * player.direction.y
+        player.dashCooldown = Date.now() + DASH_COOLDOWN
       }
     } else if (message.type === ClientMessageType.Shoot) {
       if (player.isReloading || player.isDead) {
-        return;
+        return
       }
-      player.bullets--;
+      player.bullets--
       if (player.bullets === 0) {
-        player.isReloading = Date.now() + RELOAD_SPEED;
+        player.isReloading = Date.now() + RELOAD_SPEED
       }
-      const body = game.physics.createCircle({ x: player.body.x, y: player.body.y }, BULLET_RADIUS);
+      const body = game.physics.createCircle({ x: player.body.x, y: player.body.y }, BULLET_RADIUS)
       game.bullets.push({
         id: Math.floor(Math.random() * 1e6),
         playerId: player.id,
         body: Object.assign(body, { oType: BodyType.Bullet }),
         angle: player.angle,
-      });
+      })
     } else if (message.type === ClientMessageType.Ping) {
       const msg: ServerMessage = {
         type: ServerMessageType.PingResponse,
         id: message.id,
-      };
-      server.sendMessage(roomId, userId, Buffer.from(JSON.stringify(msg), "utf8"));
+      }
+      server.sendMessage(roomId, userId, Buffer.from(JSON.stringify(msg), 'utf8'))
     }
   },
-};
+}
 
 // Load our environment variables into process.env
-dotenv.config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.env") });
+dotenv.config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../.env') })
 if (process.env.HATHORA_APP_SECRET === undefined) {
-  throw new Error("HATHORA_APP_SECRET not set");
+  throw new Error('HATHORA_APP_SECRET not set')
 }
 
 // Start the server
-const port = parseInt(process.env.PORT ?? "4000");
-const server = await startServer(store, port);
-console.log(`Server listening on port ${port}`);
+const port = parseInt(process.env.PORT ?? '4000')
+const server = await startServer(store, port)
+console.log(`Server listening on port ${port}`)
 
 // Start the game's update loop
 setInterval(() => {
   rooms.forEach((game, roomId) => {
     // Tick each room's game
-    tick(roomId, game, TICK_INTERVAL_MS / 1000);
+    tick(roomId, game, TICK_INTERVAL_MS / 1000)
 
     // Send the state updates to each client connected to that room
-    broadcastStateUpdate(roomId);
-  });
-}, TICK_INTERVAL_MS);
+    broadcastStateUpdate(roomId)
+  })
+}, TICK_INTERVAL_MS)
 
 // The frame-by-frame logic of your game should live in it's server's tick function. This is often a place to check for collisions, compute score, and so forth
 async function tick(roomId: string, game: InternalState, deltaMs: number) {
-  let highScore = 0;
-  let highScorePlayer = "";
+  let highScore = 0
+  let highScorePlayer = ''
   // Move each player with a direction set
-  game.players.forEach((player) => {
-    player.body.x += PLAYER_SPEED * player.direction.x * deltaMs;
-    player.body.y += PLAYER_SPEED * player.direction.y * deltaMs;
+  game.players.forEach(player => {
+    player.body.x += PLAYER_SPEED * player.direction.x * deltaMs
+    player.body.y += PLAYER_SPEED * player.direction.y * deltaMs
 
     if (player.isReloading && player.isReloading < Date.now()) {
-      player.isReloading = undefined;
-      player.bullets = BULLETS_MAX;
+      player.isReloading = undefined
+      player.bullets = BULLETS_MAX
     }
 
     if (player.dashCooldown && player.dashCooldown < Date.now()) {
-      player.dashCooldown = undefined;
+      player.dashCooldown = undefined
     }
 
     // calc high score (used for end game)
     if (player.score > highScore) {
-      highScore = player.score;
-      highScorePlayer = player.id;
+      highScore = player.score
+      highScorePlayer = player.id
     }
-  });
+  })
 
   // Check if game has ended, update state if so
   if (highScore >= game.winningScore && !game.isGameEnd) {
-    game.isGameEnd = true;
-    endGameCleanup(roomId, game, highScorePlayer);
+    game.isGameEnd = true
+    endGameCleanup(roomId, game, highScorePlayer)
   }
 
   // Move all active bullets along a path based on their radian angle
-  game.bullets.forEach((bullet) => {
-    bullet.body.x += Math.cos(bullet.angle) * BULLET_SPEED * deltaMs;
-    bullet.body.y += Math.sin(bullet.angle) * BULLET_SPEED * deltaMs;
-  });
+  game.bullets.forEach(bullet => {
+    bullet.body.x += Math.cos(bullet.angle) * BULLET_SPEED * deltaMs
+    bullet.body.y += Math.sin(bullet.angle) * BULLET_SPEED * deltaMs
+  })
 
   // Handle collision detections between the various types of PhysicsBody's
-  game.physics.checkAll(({ a, b, overlapV }: { a: PhysicsBody; b: PhysicsBody; overlapV: SAT.Vector }) => {
-    if (a.oType === BodyType.Player && b.oType === BodyType.Wall) {
-      a.x -= overlapV.x;
-      a.y -= overlapV.y;
-    } else if (a.oType === BodyType.Player && b.oType === BodyType.Player) {
-      b.x += overlapV.x;
-      b.y += overlapV.y;
-    } else if (a.oType === BodyType.Bullet && b.oType === BodyType.Wall) {
-      game.physics.remove(a);
-      const bulletIdx = game.bullets.findIndex((bullet) => bullet.body === a);
-      if (bulletIdx >= 0) {
-        game.bullets.splice(bulletIdx, 1);
-      }
-    } else if (a.oType === BodyType.Bullet && b.oType === BodyType.Player) {
-      game.physics.remove(a);
-      // Update shooting player's score
-      const bullet = game.bullets.find((bullet) => bullet.body === a);
-      const shooter = game.players.find((p) => p.id === bullet?.playerId);
-      if (shooter) {
-        shooter.score += 1;
-      }
+  game.physics.checkAll(
+    ({ a, b, overlapV }: { a: PhysicsBody; b: PhysicsBody; overlapV: SAT.Vector }) => {
+      if (a.oType === BodyType.Player && b.oType === BodyType.Wall) {
+        a.x -= overlapV.x
+        a.y -= overlapV.y
+      } else if (a.oType === BodyType.Player && b.oType === BodyType.Player) {
+        b.x += overlapV.x
+        b.y += overlapV.y
+      } else if (a.oType === BodyType.Bullet && b.oType === BodyType.Wall) {
+        game.physics.remove(a)
+        const bulletIdx = game.bullets.findIndex(bullet => bullet.body === a)
+        if (bulletIdx >= 0) {
+          game.bullets.splice(bulletIdx, 1)
+        }
+      } else if (a.oType === BodyType.Bullet && b.oType === BodyType.Player) {
+        game.physics.remove(a)
+        // Update shooting player's score
+        const bullet = game.bullets.find(bullet => bullet.body === a)
+        const shooter = game.players.find(p => p.id === bullet?.playerId)
+        if (shooter) {
+          shooter.score += 1
+        }
 
-      const bulletIdx = game.bullets.findIndex((bullet) => bullet.body === a);
-      if (bulletIdx >= 0) {
-        game.bullets.splice(bulletIdx, 1);
+        const bulletIdx = game.bullets.findIndex(bullet => bullet.body === a)
+        if (bulletIdx >= 0) {
+          game.bullets.splice(bulletIdx, 1)
+        }
+        const player = game.players.find(player => player.body === b)
+        if (player) {
+          player.isDead = true
+        }
+        game.physics.remove(b)
       }
-      const player = game.players.find((player) => player.body === b);
-      if (player) {
-        player.isDead = true;
-      }
-      game.physics.remove(b);
     }
-  });
+  )
 }
 
 function broadcastStateUpdate(roomId: RoomId) {
-  const game = rooms.get(roomId)!;
-  const now = Date.now();
+  const game = rooms.get(roomId)!
+  const now = Date.now()
   // Map properties in the game's state which the clients need to know about to render the game
   const state: GameState = {
-    players: game.players.map((player) => ({
+    players: game.players.map(player => ({
       id: player.id,
       nickname: player.nickname ?? player.id,
       position: { x: player.body.x, y: player.body.y },
@@ -397,42 +413,42 @@ function broadcastStateUpdate(roomId: RoomId) {
       score: player.score,
       sprite: player.sprite,
     })),
-    bullets: game.bullets.map((bullet) => ({
+    bullets: game.bullets.map(bullet => ({
       id: bullet.id,
       position: { x: bullet.body.x, y: bullet.body.y },
     })),
-  };
+  }
 
   // Send the state update to each connected client
   const msg: ServerMessage = {
     type: ServerMessageType.StateUpdate,
     state,
     ts: now,
-  };
-  server.broadcastMessage(roomId, Buffer.from(JSON.stringify(msg), "utf8"));
+  }
+  server.broadcastMessage(roomId, Buffer.from(JSON.stringify(msg), 'utf8'))
 }
 
 function initializeRoom(winningScore: number, isGameEnd: boolean) {
-  const physics = new System();
-  const tileSize = map.tileSize;
-  const top = map.top * tileSize;
-  const left = map.left * tileSize;
-  const bottom = map.bottom * tileSize;
-  const right = map.right * tileSize;
+  const physics = new System()
+  const tileSize = map.tileSize
+  const top = map.top * tileSize
+  const left = map.left * tileSize
+  const bottom = map.bottom * tileSize
+  const right = map.right * tileSize
 
   // Create map wall bodies
   map.wallsBlue.forEach(({ x, y, width, height }) => {
-    physics.insert(wallBody(x * tileSize, y * tileSize, width * tileSize, height * tileSize));
-  });
+    physics.insert(wallBody(x * tileSize, y * tileSize, width * tileSize, height * tileSize))
+  })
   map.wallsRed.forEach(({ x, y, width, height }) => {
-    physics.insert(wallBody(x * tileSize, y * tileSize, width * tileSize, height * tileSize));
-  });
+    physics.insert(wallBody(x * tileSize, y * tileSize, width * tileSize, height * tileSize))
+  })
 
   // Create map boundary boxes
-  physics.insert(wallBody(left, top - BOUNDARY_WIDTH, right - left, BOUNDARY_WIDTH)); // top
-  physics.insert(wallBody(left - BOUNDARY_WIDTH, top, BOUNDARY_WIDTH, bottom - top)); // left
-  physics.insert(wallBody(left, bottom, right - left, BOUNDARY_WIDTH)); // bottom
-  physics.insert(wallBody(right, top, BOUNDARY_WIDTH, bottom - top)); // right
+  physics.insert(wallBody(left, top - BOUNDARY_WIDTH, right - left, BOUNDARY_WIDTH)) // top
+  physics.insert(wallBody(left - BOUNDARY_WIDTH, top, BOUNDARY_WIDTH, bottom - top)) // left
+  physics.insert(wallBody(left, bottom, right - left, BOUNDARY_WIDTH)) // bottom
+  physics.insert(wallBody(right, top, BOUNDARY_WIDTH, bottom - top)) // right
 
   return {
     physics,
@@ -440,53 +456,62 @@ function initializeRoom(winningScore: number, isGameEnd: boolean) {
     bullets: [],
     winningScore,
     isGameEnd,
-  };
+  }
 }
 
 function wallBody(x: number, y: number, width: number, height: number): PhysicsBody {
   return Object.assign(new Box({ x, y }, width, height, { isStatic: true }), {
     oType: BodyType.Wall,
-  });
+  })
 }
 
 function getDeveloperToken() {
-  const token = process.env.DEVELOPER_TOKEN;
+  const token = process.env.DEVELOPER_TOKEN
   if (token == null) {
-    throw new Error("DEVELOPER_TOKEN not set");
+    throw new Error('DEVELOPER_TOKEN not set')
   }
-  return token;
+  return token
 }
 
 async function endGameCleanup(roomId: string, game: InternalState, winningPlayerId: string) {
   // Update lobby state (to persist end game state and prevent new players from joining)
-  game.winningPlayerId = winningPlayerId;
-  await updateLobbyState(game, roomId);
+  game.winningPlayerId = winningPlayerId
+  await updateLobbyState(game, roomId)
 
   // boot all players and destroy room
   setTimeout(() => {
-    const playerIds = game.players.map((p) => p.id);
-    playerIds.forEach((playerId) => {
-      console.log("disconnecting: ", playerId, roomId);
-      server.closeConnection(roomId, playerId, "game has ended, disconnecting players");
-    });
-    console.log("destroying room: ", roomId);
-    roomClient.destroyRoom(
-      process.env.HATHORA_APP_ID!,
-      roomId,
-      { headers: { Authorization: `Bearer ${getDeveloperToken()}`, "Content-Type": "application/json" } }
-    );
-  }, 10000);
+    const playerIds = game.players.map(p => p.id)
+    playerIds.forEach(playerId => {
+      console.log('disconnecting: ', playerId, roomId)
+      server.closeConnection(roomId, playerId, 'game has ended, disconnecting players')
+    })
+    console.log('destroying room: ', roomId)
+    roomClient.destroyRoom(process.env.HATHORA_APP_ID!, roomId, {
+      headers: {
+        Authorization: `Bearer ${getDeveloperToken()}`,
+        'Content-Type': 'application/json',
+      },
+    })
+  }, 10000)
 }
 
 async function updateLobbyState(game: InternalState, roomId: string) {
   const lobbyState: LobbyState = {
-    playerNicknameMap: Object.fromEntries(game.players.map((player) => [player.id, player.nickname ?? player.id])),
+    playerNicknameMap: Object.fromEntries(
+      game.players.map(player => [player.id, player.nickname ?? player.id])
+    ),
     isGameEnd: game.isGameEnd,
     winningPlayerId: game.winningPlayerId,
-  };
-  return await lobbyClient.setLobbyState(process.env.HATHORA_APP_ID!,
+  }
+  return await lobbyClient.setLobbyState(
+    process.env.HATHORA_APP_ID!,
     roomId,
-    { state:lobbyState },
-    { headers: { Authorization: `Bearer ${getDeveloperToken()}`, "Content-Type": "application/json" } }
-  );
+    { state: lobbyState },
+    {
+      headers: {
+        Authorization: `Bearer ${getDeveloperToken()}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  )
 }
