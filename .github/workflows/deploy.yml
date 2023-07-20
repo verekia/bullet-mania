@@ -1,0 +1,17 @@
+name: Deploy
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - run: npm install -g @hathora/cli
+      - run: >
+          hathora-cloud deploy --appId app-ba84e1b3-8501-4ea8-baf1-bbd38e33ef43
+          --roomsPerProcess 1 --planName tiny --transportType tls
+          --containerPort 4000 --env '[{"name": "DEVELOPER_TOKEN", "value": "${{
+          secrets.HATHORA_TOKEN }}"}]' --token ${{ secrets.HATHORA_TOKEN }}
